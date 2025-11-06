@@ -1,5 +1,4 @@
 #include <cxxopts.hpp>
-
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -7,12 +6,17 @@
 constexpr std::string_view MESSAGE{"codingchallenges.fyi trace route"};
 
 cxxopts::ParseResult parse_cmd(int argc, char** argv) {
-  cxxopts::Options options("cctraceroute","Traceroute is a tool to that allows you to trace the route network packets will take from one computer to another over a network.");
+  cxxopts::Options options("cctraceroute",
+                           "Traceroute is a tool to that allows you to trace the route network "
+                           "packets will take from one computer to another over a network.");
+  // clang-format off
   options.add_options()
-    ("hostname","Target host name", cxxopts::value<std::string>())
-    ("m,maxhops","Max hops", cxxopts::value<int>()->default_value("64"))
+    ("hostname", "Target host name", cxxopts::value<std::string>())
+    ("m,maxhops", "Max hops", cxxopts::value<int>()->default_value("64"))
     ("h,help", "Print help");
+  // clang-format on
   options.parse_positional({"hostname"});
+
   auto result = options.parse(argc, argv);
   if (result.count("help") || !result.count("hostname")) {
     std::cout << options.help() << std::endl;
