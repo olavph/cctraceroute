@@ -8,6 +8,8 @@ add_compile_options(-Wall -Werror -Wextra -Wpedantic)
 find_package(cxxopts REQUIRED)
 find_package(GTest REQUIRED)
 
+include_directories(src)
+
 add_executable(cctraceroute cctraceroute.cpp)
 target_link_libraries(cctraceroute cxxopts::cxxopts)
 
