@@ -1,4 +1,4 @@
-#include "../src/socket.hpp"
+#include "socket.hpp"
 
 #include <gtest/gtest.h>
 
