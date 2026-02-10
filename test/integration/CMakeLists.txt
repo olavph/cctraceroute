@@ -1,0 +1,3 @@
+add_executable(cctraceroute_integration_tests test_dns.cpp test_socket.cpp)
+target_link_libraries(cctraceroute_integration_tests GTest::gtest GTest::gtest_main cctraceroute_lib)
+gtest_discover_tests(cctraceroute_integration_tests)

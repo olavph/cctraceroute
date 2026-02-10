@@ -9,7 +9,5 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-add_executable(cctraceroute_tests test_cctraceroute.cpp)
-target_link_libraries(cctraceroute_tests GTest::gtest GTest::gtest_main cctraceroute_lib)
-
-gtest_discover_tests(cctraceroute_tests)
+add_subdirectory(unit)
+add_subdirectory(integration)

@@ -1,0 +1,3 @@
+add_executable(cctraceroute_unit_tests test_traceroute.cpp)
+target_link_libraries(cctraceroute_unit_tests GTest::gtest GTest::gtest_main cctraceroute_lib)
+gtest_discover_tests(cctraceroute_unit_tests)

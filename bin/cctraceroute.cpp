@@ -1,5 +1,8 @@
+#include "traceroute.hpp"
+
 #include <cxxopts.hpp>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -30,8 +33,8 @@ int main(int argc, char** argv) {
   int max_hops = result["maxhops"].as<int>();
   std::string message = result["text"].as<std::string>();
 
-  std::cout << "traceroute to " << host_name << " (?), " << max_hops << " hops max, " << message.size()
-            << " byte packets" << std::endl;
+  TraceRoute traceroute(host_name, max_hops, message, std::make_unique<SystemDnsResolver>());
+  traceroute.run(std::cout);
 
   return 0;
 }

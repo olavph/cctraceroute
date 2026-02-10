@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-TEST(TracerouteTest, SendRecv) {
+TEST(SocketTest, SendRecv) {
   UDPSender sender("127.0.0.1", 12345);
   UDPReceiver receiver("127.0.0.1", 12345);
 
