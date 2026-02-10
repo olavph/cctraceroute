@@ -106,8 +106,10 @@ class IcmpReceiver {
 
 class NetworkProber : public Prober {
  public:
+  explicit NetworkProber(int timeout_sec = 1) : timeout_sec_(timeout_sec) {}
+
   HopResult send_probe(std::string_view dest_ip, int port, int ttl, std::string_view payload) override final {
-    IcmpReceiver receiver;
+    IcmpReceiver receiver(timeout_sec_);
     UdpSender sender(ttl);
     sender.send(dest_ip, port, payload);
 
@@ -119,4 +121,7 @@ class NetworkProber : public Prober {
     bool reached = response->icmp.has_value() && *response->icmp == IcmpResult::DestUnreachable;
     return HopResult{std::move(response->sender_ip), reached, false};
   }
+
+ private:
+  int timeout_sec_;
 };
