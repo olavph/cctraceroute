@@ -33,7 +33,8 @@ int main(int argc, char** argv) {
   int max_hops = result["maxhops"].as<int>();
   std::string message = result["text"].as<std::string>();
 
-  TraceRoute traceroute(host_name, max_hops, message, std::make_unique<SystemDnsResolver>());
+  TraceRoute traceroute(host_name, max_hops, message, std::make_unique<SystemDnsResolver>(),
+                        std::make_unique<NetworkProber>());
   traceroute.run(std::cout);
 
   return 0;
