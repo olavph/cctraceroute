@@ -9,8 +9,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-enable_testing()
-
 add_executable(cctraceroute_tests test_cctraceroute.cpp)
 target_link_libraries(cctraceroute_tests GTest::gtest GTest::gtest_main cctraceroute_lib)
 
