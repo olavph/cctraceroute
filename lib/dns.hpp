@@ -23,8 +23,7 @@ class SystemDnsResolver : public DnsResolver {
     hints.ai_socktype = SOCK_DGRAM;
 
     struct addrinfo* result = nullptr;
-    std::string host_str(hostname);
-    int status = getaddrinfo(host_str.c_str(), nullptr, &hints, &result);
+    int status = getaddrinfo(hostname.data(), nullptr, &hints, &result);
     if (status != 0) {
       throw std::runtime_error(std::string("Failed to resolve hostname: ") + gai_strerror(status));
     }
@@ -40,13 +39,12 @@ class SystemDnsResolver : public DnsResolver {
   std::string reverse_resolve(std::string_view ip) override final {
     struct sockaddr_in sa {};
     sa.sin_family = AF_INET;
-    std::string ip_str(ip);
-    inet_pton(AF_INET, ip_str.c_str(), &sa.sin_addr);
+    inet_pton(AF_INET, ip.data(), &sa.sin_addr);
 
     char host[NI_MAXHOST] {};
     int status = getnameinfo(reinterpret_cast<struct sockaddr*>(&sa), sizeof(sa), host, sizeof(host), nullptr, 0, 0);
     if (status != 0) {
-      return ip_str;
+      return std::string(ip);
     }
 
     return std::string(host);

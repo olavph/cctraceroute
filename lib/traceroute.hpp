@@ -24,17 +24,26 @@ class TraceRoute {
         << message_.size() << " byte packets" << std::endl;
 
     constexpr int start_port = 33434;
-    HopResult result = prober_->send_probe(resolved_ip, start_port, 1, message_);
+    for (int ttl = 1; ttl <= max_hops_; ++ttl) {
+      HopResult result = prober_->send_probe(resolved_ip, start_port + ttl - 1, ttl, message_);
+      print_hop(out, ttl, result);
 
-    if (result.timed_out) {
-      out << " 1  *" << std::endl;
-    } else {
-      std::string hostname = resolver_->reverse_resolve(result.sender_ip);
-      out << " 1  " << hostname << " (" << result.sender_ip << ")" << std::endl;
+      if (result.reached_destination) {
+        break;
+      }
     }
   }
 
  private:
+  void print_hop(std::ostream& out, int ttl, const HopResult& result) {
+    if (result.timed_out) {
+      out << " " << ttl << "  *  * *" << std::endl;
+    } else {
+      std::string hostname = resolver_->reverse_resolve(result.sender_ip);
+      out << " " << ttl << "  " << hostname << " (" << result.sender_ip << ")" << std::endl;
+    }
+  }
+
   std::string hostname_;
   int max_hops_;
   std::string message_;
