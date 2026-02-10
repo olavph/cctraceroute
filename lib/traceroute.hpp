@@ -29,7 +29,8 @@ class TraceRoute {
     if (result.timed_out) {
       out << " 1  *" << std::endl;
     } else {
-      out << " 1  " << result.sender_ip << std::endl;
+      std::string hostname = resolver_->reverse_resolve(result.sender_ip);
+      out << " 1  " << hostname << " (" << result.sender_ip << ")" << std::endl;
     }
   }
 

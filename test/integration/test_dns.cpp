@@ -16,3 +16,14 @@ TEST(DNSTest, ThrowsOnInvalidHostname) {
   SystemDnsResolver resolver;
   ASSERT_THROW(resolver.resolve("invalid.hostname.zzz"), std::runtime_error);
 }
+
+TEST(DNSTest, ReverseResolvesLocalhost) {
+  SystemDnsResolver resolver;
+  ASSERT_EQ(resolver.reverse_resolve("127.0.0.1"), "localhost");
+}
+
+TEST(DNSTest, ReverseResolveReturnsIpWhenNoHostname) {
+  SystemDnsResolver resolver;
+  std::string result = resolver.reverse_resolve("192.0.2.1");
+  ASSERT_EQ(result, "192.0.2.1");
+}

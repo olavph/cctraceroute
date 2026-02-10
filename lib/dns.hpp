@@ -12,6 +12,7 @@ class DnsResolver {
  public:
   virtual ~DnsResolver() = default;
   virtual std::string resolve(std::string_view hostname) = 0;
+  virtual std::string reverse_resolve(std::string_view ip) = 0;
 };
 
 class SystemDnsResolver : public DnsResolver {
@@ -34,5 +35,20 @@ class SystemDnsResolver : public DnsResolver {
     freeaddrinfo(result);
 
     return std::string(ip);
+  }
+
+  std::string reverse_resolve(std::string_view ip) override final {
+    struct sockaddr_in sa {};
+    sa.sin_family = AF_INET;
+    std::string ip_str(ip);
+    inet_pton(AF_INET, ip_str.c_str(), &sa.sin_addr);
+
+    char host[NI_MAXHOST] {};
+    int status = getnameinfo(reinterpret_cast<struct sockaddr*>(&sa), sizeof(sa), host, sizeof(host), nullptr, 0, 0);
+    if (status != 0) {
+      return ip_str;
+    }
+
+    return std::string(host);
   }
 };

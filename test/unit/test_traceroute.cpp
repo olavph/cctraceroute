@@ -6,11 +6,15 @@
 
 class StubDnsResolver : public DnsResolver {
  public:
-  explicit StubDnsResolver(std::string ip) : ip_(std::move(ip)) {}
+  StubDnsResolver(std::string ip, std::string reverse_hostname)
+      : ip_(std::move(ip)), reverse_hostname_(std::move(reverse_hostname)) {}
+
   std::string resolve(std::string_view /*hostname*/) override { return ip_; }
+  std::string reverse_resolve(std::string_view /*ip*/) override { return reverse_hostname_; }
 
  private:
   std::string ip_;
+  std::string reverse_hostname_;
 };
 
 class StubProber : public Prober {
@@ -28,17 +32,17 @@ class StubProber : public Prober {
 TEST(TracerouteTest, PrintsHeader) {
   std::ostringstream out;
   TraceRoute traceroute("dns.google.com", 64, "codingchallenges.fyi trace route",
-                        std::make_unique<StubDnsResolver>("8.8.4.4"),
+                        std::make_unique<StubDnsResolver>("8.8.4.4", "my-router.local"),
                         std::make_unique<StubProber>(HopResult{"192.168.1.1", false, false}));
   traceroute.run(out);
   std::string output = out.str();
   ASSERT_TRUE(output.starts_with("traceroute to dns.google.com (8.8.4.4), 64 hops max, 32 byte packets\n"));
 }
 
-TEST(TracerouteTest, PrintsFirstHop) {
+TEST(TracerouteTest, PrintsFirstHopWithHostname) {
   std::ostringstream out;
   TraceRoute traceroute("dns.google.com", 64, "codingchallenges.fyi trace route",
-                        std::make_unique<StubDnsResolver>("8.8.4.4"),
+                        std::make_unique<StubDnsResolver>("8.8.4.4", "my-router.local"),
                         std::make_unique<StubProber>(HopResult{"192.168.68.1", false, false}));
   traceroute.run(out);
   std::string output = out.str();
@@ -47,13 +51,28 @@ TEST(TracerouteTest, PrintsFirstHop) {
   if (second_line.ends_with('\n')) {
     second_line.pop_back();
   }
-  EXPECT_EQ(second_line, " 1  192.168.68.1");
+  EXPECT_EQ(second_line, " 1  my-router.local (192.168.68.1)");
+}
+
+TEST(TracerouteTest, PrintsFirstHopWithoutHostname) {
+  std::ostringstream out;
+  TraceRoute traceroute("dns.google.com", 64, "codingchallenges.fyi trace route",
+                        std::make_unique<StubDnsResolver>("8.8.4.4", "192.168.68.1"),
+                        std::make_unique<StubProber>(HopResult{"192.168.68.1", false, false}));
+  traceroute.run(out);
+  std::string output = out.str();
+  auto second_line_start = output.find('\n') + 1;
+  std::string second_line = output.substr(second_line_start);
+  if (second_line.ends_with('\n')) {
+    second_line.pop_back();
+  }
+  EXPECT_EQ(second_line, " 1  192.168.68.1 (192.168.68.1)");
 }
 
 TEST(TracerouteTest, PrintsTimeoutAsAsterisk) {
   std::ostringstream out;
   TraceRoute traceroute("dns.google.com", 64, "codingchallenges.fyi trace route",
-                        std::make_unique<StubDnsResolver>("8.8.4.4"),
+                        std::make_unique<StubDnsResolver>("8.8.4.4", ""),
                         std::make_unique<StubProber>(HopResult{"*", false, true}));
   traceroute.run(out);
   std::string output = out.str();
