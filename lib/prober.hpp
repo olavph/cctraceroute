@@ -61,7 +61,7 @@ class UdpSender {
 
 struct IcmpResponse {
   std::string sender_ip;
-  std::optional<IcmpResult> icmp;
+  std::optional<IcmpPacket> icmp;
 };
 
 class IcmpReceiver {
@@ -113,13 +113,19 @@ class NetworkProber : public Prober {
     UdpSender sender(ttl);
     sender.send(dest_ip, port, payload);
 
-    auto response = receiver.receive();
-    if (!response) {
-      return HopResult{"*", false, true};
-    }
+    while (true) {
+      auto response = receiver.receive();
+      if (!response) {
+        return HopResult{"*", false, true};
+      }
 
-    bool reached = response->icmp.has_value() && *response->icmp == IcmpResult::DestUnreachable;
-    return HopResult{std::move(response->sender_ip), reached, false};
+      if (!response->icmp || response->icmp->original_dest_port != static_cast<uint16_t>(port)) {
+        continue;
+      }
+
+      bool reached = response->icmp->type == IcmpType::DestUnreachable;
+      return HopResult{std::move(response->sender_ip), reached, false};
+    }
   }
 
  private:
