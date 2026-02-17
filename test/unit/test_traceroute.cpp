@@ -60,11 +60,11 @@ class TracerouteTest : public ::testing::Test {
   static constexpr auto kMessage = "codingchallenges.fyi trace route";
   static constexpr int kMaxHops = 64;
 
-  TraceRoute make_traceroute(std::vector<HopResult> hops, int max_hops = kMaxHops) {
+  TraceRoute make_traceroute(std::vector<HopResult> hops, int max_hops = kMaxHops, int tries_per_hop = 1) {
     auto prober = std::make_unique<StubProber>(std::move(hops));
     prober_ = prober.get();
-    return TraceRoute(kHostname, max_hops, kMessage, std::make_unique<StubDnsResolver>(kResolvedIp, reverse_map_),
-                      std::move(prober));
+    return TraceRoute(kHostname, max_hops, tries_per_hop, kMessage,
+                      std::make_unique<StubDnsResolver>(kResolvedIp, reverse_map_), std::move(prober));
   }
 
   std::ostringstream out_;
@@ -73,7 +73,7 @@ class TracerouteTest : public ::testing::Test {
 };
 
 TEST_F(TracerouteTest, PrintsHeader) {
-  auto traceroute = make_traceroute({{"8.8.4.4", true, false}});
+  auto traceroute = make_traceroute({HopResult::reached("8.8.4.4", 1.0)});
 
   traceroute.run(out_);
 
@@ -83,37 +83,37 @@ TEST_F(TracerouteTest, PrintsHeader) {
 TEST_F(TracerouteTest, TracesMultipleHops) {
   reverse_map_ = {{"192.168.68.1", "my-router.local"}, {"8.8.4.4", "dns.google"}};
   auto traceroute = make_traceroute({
-      {"192.168.68.1", false, false},
-      {"10.0.0.1", false, false},
-      {"8.8.4.4", true, false},
+      HopResult::transit("192.168.68.1", 5.131),
+      HopResult::transit("10.0.0.1", 4.999),
+      HopResult::reached("8.8.4.4", 30.561),
   });
 
   traceroute.run(out_);
   std::string output = out_.str();
 
-  EXPECT_EQ(get_line(output, 1), " 1  my-router.local (192.168.68.1)");
-  EXPECT_EQ(get_line(output, 2), " 2  10.0.0.1 (10.0.0.1)");
-  EXPECT_EQ(get_line(output, 3), " 3  dns.google (8.8.4.4)");
+  EXPECT_EQ(get_line(output, 1), " 1  my-router.local (192.168.68.1) 5.131 ms");
+  EXPECT_EQ(get_line(output, 2), " 2  10.0.0.1 (10.0.0.1) 4.999 ms");
+  EXPECT_EQ(get_line(output, 3), " 3  dns.google (8.8.4.4) 30.561 ms");
 }
 
 TEST_F(TracerouteTest, HandlesTimeoutMidTrace) {
   auto traceroute = make_traceroute({
-      {"192.168.68.1", false, false},
-      {"*", false, true},
-      {"8.8.4.4", true, false},
+      HopResult::transit("192.168.68.1", 5.0),
+      HopResult::timed_out_hop(),
+      HopResult::reached("8.8.4.4", 30.0),
   });
 
   traceroute.run(out_);
   std::string output = out_.str();
 
   EXPECT_EQ(get_line(output, 2), " 2  *  * *");
-  EXPECT_EQ(get_line(output, 3), " 3  8.8.4.4 (8.8.4.4)");
+  EXPECT_EQ(get_line(output, 3), " 3  8.8.4.4 (8.8.4.4) 30.000 ms");
 }
 
 TEST_F(TracerouteTest, StopsAtDestination) {
   auto traceroute = make_traceroute({
-      {"192.168.68.1", false, false},
-      {"8.8.4.4", true, false},
+      HopResult::transit("192.168.68.1", 5.0),
+      HopResult::reached("8.8.4.4", 10.0),
   });
 
   traceroute.run(out_);
@@ -122,13 +122,86 @@ TEST_F(TracerouteTest, StopsAtDestination) {
 }
 
 TEST_F(TracerouteTest, StopsAtMaxHops) {
-  auto traceroute =
-      make_traceroute({{"10.0.0.1", false, false}, {"10.0.0.2", false, false}, {"10.0.0.3", false, false}}, 3);
+  auto traceroute = make_traceroute(
+      {
+          HopResult::transit("10.0.0.1", 1.0),
+          HopResult::transit("10.0.0.2", 2.0),
+          HopResult::transit("10.0.0.3", 3.0),
+      },
+      3);
 
   traceroute.run(out_);
   std::string output = out_.str();
 
   EXPECT_EQ(prober_->call_count(), 3);
-  EXPECT_EQ(get_line(output, 1), " 1  10.0.0.1 (10.0.0.1)");
-  EXPECT_EQ(get_line(output, 3), " 3  10.0.0.3 (10.0.0.3)");
+  EXPECT_EQ(get_line(output, 1), " 1  10.0.0.1 (10.0.0.1) 1.000 ms");
+  EXPECT_EQ(get_line(output, 3), " 3  10.0.0.3 (10.0.0.3) 3.000 ms");
+}
+
+TEST_F(TracerouteTest, AveragesRttAcrossMultipleProbes) {
+  // 1 hop, 3 probes: RTTs 3.0, 6.0, 9.0 -> avg 6.0
+  auto traceroute = make_traceroute(
+      {
+          HopResult::reached("8.8.4.4", 3.0),
+          HopResult::reached("8.8.4.4", 6.0),
+          HopResult::reached("8.8.4.4", 9.0),
+      },
+      kMaxHops, 3);
+
+  traceroute.run(out_);
+  std::string output = out_.str();
+
+  EXPECT_EQ(get_line(output, 1), " 1  8.8.4.4 (8.8.4.4) 6.000 ms");
+}
+
+TEST_F(TracerouteTest, AveragesRttExcludingTimeouts) {
+  // 1 hop, 3 probes: success, timeout, success -> avg of 4.0 and 8.0 = 6.0
+  auto traceroute = make_traceroute(
+      {
+          HopResult::reached("8.8.4.4", 4.0),
+          HopResult::timed_out_hop(),
+          HopResult::reached("8.8.4.4", 8.0),
+      },
+      kMaxHops, 3);
+
+  traceroute.run(out_);
+  std::string output = out_.str();
+
+  EXPECT_EQ(get_line(output, 1), " 1  8.8.4.4 (8.8.4.4) 6.000 ms");
+}
+
+TEST_F(TracerouteTest, AllProbesTimeoutShowsStars) {
+  // 1 hop, 3 probes: all timeout
+  auto traceroute = make_traceroute(
+      {
+          HopResult::timed_out_hop(),
+          HopResult::timed_out_hop(),
+          HopResult::timed_out_hop(),
+          HopResult::reached("8.8.4.4", 1.0),
+          HopResult::reached("8.8.4.4", 1.0),
+          HopResult::reached("8.8.4.4", 1.0),
+      },
+      kMaxHops, 3);
+
+  traceroute.run(out_);
+  std::string output = out_.str();
+
+  EXPECT_EQ(get_line(output, 1), " 1  *  * *");
+}
+
+TEST_F(TracerouteTest, MultipleProbesPerHopCallsProberCorrectly) {
+  auto traceroute = make_traceroute(
+      {
+          HopResult::transit("10.0.0.1", 1.0),
+          HopResult::transit("10.0.0.1", 2.0),
+          HopResult::transit("10.0.0.1", 3.0),
+          HopResult::reached("8.8.4.4", 10.0),
+          HopResult::reached("8.8.4.4", 20.0),
+          HopResult::reached("8.8.4.4", 30.0),
+      },
+      kMaxHops, 3);
+
+  traceroute.run(out_);
+
+  EXPECT_EQ(prober_->call_count(), 6);
 }

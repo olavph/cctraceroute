@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <chrono>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -13,8 +14,17 @@
 
 struct HopResult {
   std::string sender_ip;
-  bool reached_destination;
-  bool timed_out;
+  bool reached_destination = false;
+  bool timed_out = false;
+  double rtt_ms = 0.0;
+
+  static HopResult timed_out_hop() { return {.sender_ip = "*", .timed_out = true}; }
+
+  static HopResult reached(std::string ip, double rtt) {
+    return {.sender_ip = std::move(ip), .reached_destination = true, .rtt_ms = rtt};
+  }
+
+  static HopResult transit(std::string ip, double rtt) { return {.sender_ip = std::move(ip), .rtt_ms = rtt}; }
 };
 
 class Prober {
@@ -66,13 +76,18 @@ struct IcmpResponse {
 
 class IcmpReceiver {
  public:
-  explicit IcmpReceiver(int timeout_sec = 5) {
+  explicit IcmpReceiver(std::chrono::milliseconds timeout) {
     fd_ = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (fd_ < 0) {
       throw std::runtime_error("Failed to create ICMP socket (need root/CAP_NET_RAW)");
     }
+
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(timeout);
+    const auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(timeout) - seconds;
+
     struct timeval tv{};
-    tv.tv_sec = timeout_sec;
+    tv.tv_sec = seconds.count();
+    tv.tv_usec = microseconds.count();
     setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   }
 
@@ -97,7 +112,7 @@ class IcmpReceiver {
     inet_ntop(AF_INET, &from_addr.sin_addr, ip_str, sizeof(ip_str));
 
     auto icmp = parse_icmp(std::span<const uint8_t>(buffer.data(), static_cast<std::size_t>(bytes)));
-    return IcmpResponse{std::string(ip_str), icmp};
+    return IcmpResponse{.sender_ip = std::string(ip_str), .icmp = icmp};
   }
 
  private:
@@ -106,28 +121,35 @@ class IcmpReceiver {
 
 class NetworkProber : public Prober {
  public:
-  explicit NetworkProber(int timeout_sec = 1) : timeout_sec_(timeout_sec) {}
+  explicit NetworkProber(std::chrono::milliseconds timeout) : timeout_(timeout) {}
 
   HopResult send_probe(std::string_view dest_ip, int port, int ttl, std::string_view payload) override final {
-    IcmpReceiver receiver(timeout_sec_);
+    IcmpReceiver receiver(timeout_);
     UdpSender sender(ttl);
+
+    auto start = std::chrono::steady_clock::now();
     sender.send(dest_ip, port, payload);
 
     while (true) {
       auto response = receiver.receive();
       if (!response) {
-        return HopResult{"*", false, true};
+        return HopResult::timed_out_hop();
       }
 
       if (!response->icmp || response->icmp->original_dest_port != static_cast<uint16_t>(port)) {
         continue;
       }
 
-      bool reached = response->icmp->type == IcmpType::DestUnreachable;
-      return HopResult{std::move(response->sender_ip), reached, false};
+      auto end = std::chrono::steady_clock::now();
+      double rtt_ms = std::chrono::duration<double, std::milli>(end - start).count();
+
+      if (response->icmp->type == IcmpType::DestUnreachable) {
+        return HopResult::reached(std::move(response->sender_ip), rtt_ms);
+      }
+      return HopResult::transit(std::move(response->sender_ip), rtt_ms);
     }
   }
 
  private:
-  int timeout_sec_;
+  std::chrono::milliseconds timeout_;
 };
