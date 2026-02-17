@@ -37,11 +37,11 @@ class SystemDnsResolver : public DnsResolver {
   }
 
   std::string reverse_resolve(std::string_view ip) override final {
-    struct sockaddr_in sa {};
+    struct sockaddr_in sa{};
     sa.sin_family = AF_INET;
     inet_pton(AF_INET, ip.data(), &sa.sin_addr);
 
-    char host[NI_MAXHOST] {};
+    char host[NI_MAXHOST]{};
     int status = getnameinfo(reinterpret_cast<struct sockaddr*>(&sa), sizeof(sa), host, sizeof(host), nullptr, 0, 0);
     if (status != 0) {
       return std::string(ip);

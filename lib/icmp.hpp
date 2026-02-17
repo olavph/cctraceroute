@@ -1,21 +1,17 @@
 #pragma once
 
+#include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/udp.h>
+
 #include <cstdint>
 #include <optional>
 #include <span>
 
-constexpr std::size_t kMinIpHeaderLen = 20;
-constexpr std::size_t kIcmpHeaderLen = 8;
-constexpr std::size_t kUdpDestPortOffset = 2;
-constexpr std::size_t kUdpHeaderLen = 8;
-constexpr std::size_t kIpIhlMask = 0x0F;
-constexpr std::size_t kIpIhlScale = 4;
-constexpr std::size_t kIpProtocolOffset = 9;
-constexpr uint8_t kIpProtocolIcmp = 1;
-
 enum class IcmpType : uint8_t {
-  DestUnreachable = 3,
-  TimeExceeded = 11,
+  DestUnreachable = ICMP_DEST_UNREACH,
+  TimeExceeded = ICMP_TIME_EXCEEDED,
 };
 
 struct IcmpPacket {
@@ -24,44 +20,43 @@ struct IcmpPacket {
 };
 
 inline std::optional<IcmpPacket> parse_icmp(std::span<const uint8_t> raw_packet) {
-  if (raw_packet.size() < kMinIpHeaderLen + kIcmpHeaderLen) {
+  if (raw_packet.size() < sizeof(struct iphdr)) {
     return std::nullopt;
   }
 
-  if (raw_packet[kIpProtocolOffset] != kIpProtocolIcmp) {
+  const auto& outer_ip = *reinterpret_cast<const struct iphdr*>(raw_packet.data());
+
+  if (outer_ip.protocol != IPPROTO_ICMP) {
     return std::nullopt;
   }
 
-  std::size_t outer_ip_len = (raw_packet[0] & kIpIhlMask) * kIpIhlScale;
+  const std::size_t outer_ip_len = outer_ip.ihl * 4;
 
-  if (raw_packet.size() < outer_ip_len + kIcmpHeaderLen) {
+  if (raw_packet.size() < outer_ip_len + sizeof(struct icmphdr)) {
     return std::nullopt;
   }
 
-  uint8_t icmp_type = raw_packet[outer_ip_len];
+  const auto& icmp = *reinterpret_cast<const struct icmphdr*>(raw_packet.data() + outer_ip_len);
 
-  if (icmp_type != static_cast<uint8_t>(IcmpType::TimeExceeded) &&
-      icmp_type != static_cast<uint8_t>(IcmpType::DestUnreachable)) {
+  if (icmp.type != ICMP_TIME_EXCEEDED && icmp.type != ICMP_DEST_UNREACH) {
     return std::nullopt;
   }
 
   // Parse the encapsulated original packet: inner IP header + UDP header
-  std::size_t inner_ip_offset = outer_ip_len + kIcmpHeaderLen;
+  const std::size_t inner_ip_offset = outer_ip_len + sizeof(struct icmphdr);
 
-  if (raw_packet.size() < inner_ip_offset + kMinIpHeaderLen + kUdpHeaderLen) {
+  if (raw_packet.size() < inner_ip_offset + sizeof(struct iphdr) + sizeof(struct udphdr)) {
     return std::nullopt;
   }
 
-  std::size_t inner_ip_len = (raw_packet[inner_ip_offset] & kIpIhlMask) * kIpIhlScale;
+  const auto& inner_ip = *reinterpret_cast<const struct iphdr*>(raw_packet.data() + inner_ip_offset);
+  std::size_t inner_ip_len = inner_ip.ihl * 4;
 
-  if (raw_packet.size() < inner_ip_offset + inner_ip_len + kUdpHeaderLen) {
+  if (raw_packet.size() < inner_ip_offset + inner_ip_len + sizeof(struct udphdr)) {
     return std::nullopt;
   }
 
-  std::size_t udp_offset = inner_ip_offset + inner_ip_len;
-  auto dest_port =
-      static_cast<uint16_t>((raw_packet[udp_offset + kUdpDestPortOffset] << 8) |
-                             raw_packet[udp_offset + kUdpDestPortOffset + 1]);
+  const auto& udp = *reinterpret_cast<const struct udphdr*>(raw_packet.data() + inner_ip_offset + inner_ip_len);
 
-  return IcmpPacket{static_cast<IcmpType>(icmp_type), dest_port};
+  return IcmpPacket{static_cast<IcmpType>(icmp.type), ntohs(udp.dest)};
 }

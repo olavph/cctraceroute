@@ -1,6 +1,6 @@
-#include "dns.hpp"
-
 #include <gtest/gtest.h>
+
+#include "dns.hpp"
 
 TEST(DNSTest, ResolvesLocalhost) {
   SystemDnsResolver resolver;

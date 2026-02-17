@@ -1,7 +1,5 @@
 #pragma once
 
-#include "icmp.hpp"
-
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -10,6 +8,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+
+#include "icmp.hpp"
 
 struct HopResult {
   std::string sender_ip;
@@ -42,7 +42,7 @@ class UdpSender {
   UdpSender& operator=(const UdpSender&) = delete;
 
   void send(std::string_view dest_ip, int port, std::string_view payload) {
-    struct sockaddr_in dest_addr {};
+    struct sockaddr_in dest_addr{};
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(static_cast<uint16_t>(port));
     std::string dest_str(dest_ip);
@@ -71,7 +71,7 @@ class IcmpReceiver {
     if (fd_ < 0) {
       throw std::runtime_error("Failed to create ICMP socket (need root/CAP_NET_RAW)");
     }
-    struct timeval tv {};
+    struct timeval tv{};
     tv.tv_sec = timeout_sec;
     setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   }
@@ -82,8 +82,8 @@ class IcmpReceiver {
   IcmpReceiver& operator=(const IcmpReceiver&) = delete;
 
   std::optional<IcmpResponse> receive() {
-    std::array<uint8_t, 1500> buffer {};
-    struct sockaddr_in from_addr {};
+    std::array<uint8_t, 1500> buffer{};
+    struct sockaddr_in from_addr{};
     socklen_t from_len = sizeof(from_addr);
 
     ssize_t bytes =
@@ -93,7 +93,7 @@ class IcmpReceiver {
       return std::nullopt;
     }
 
-    char ip_str[INET_ADDRSTRLEN] {};
+    char ip_str[INET_ADDRSTRLEN]{};
     inet_ntop(AF_INET, &from_addr.sin_addr, ip_str, sizeof(ip_str));
 
     auto icmp = parse_icmp(std::span<const uint8_t>(buffer.data(), static_cast<std::size_t>(bytes)));

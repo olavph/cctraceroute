@@ -1,10 +1,10 @@
-#include "traceroute.hpp"
-
 #include <cxxopts.hpp>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <string_view>
+
+#include "traceroute.hpp"
 
 cxxopts::ParseResult parse_cmd(int argc, char** argv) {
   cxxopts::Options options("cctraceroute",

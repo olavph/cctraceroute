@@ -1,17 +1,17 @@
 #pragma once
 
-#include "dns.hpp"
-#include "prober.hpp"
-
 #include <memory>
 #include <ostream>
 #include <string>
 #include <string_view>
 
+#include "dns.hpp"
+#include "prober.hpp"
+
 class TraceRoute {
  public:
-  TraceRoute(std::string_view hostname, int max_hops, std::string_view message,
-             std::unique_ptr<DnsResolver> resolver, std::unique_ptr<Prober> prober)
+  TraceRoute(std::string_view hostname, int max_hops, std::string_view message, std::unique_ptr<DnsResolver> resolver,
+             std::unique_ptr<Prober> prober)
       : hostname_(hostname),
         max_hops_(max_hops),
         message_(message),

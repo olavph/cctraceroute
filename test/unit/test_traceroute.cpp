@@ -70,8 +70,6 @@ class TracerouteTest : public ::testing::Test {
   std::ostringstream out_;
   std::map<std::string, std::string> reverse_map_;
   StubProber* prober_ = nullptr;
-
-
 };
 
 TEST_F(TracerouteTest, PrintsHeader) {
